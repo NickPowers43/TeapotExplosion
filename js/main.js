@@ -36,8 +36,11 @@ function createShader(gl, type, sourcePath, createSuccess) {
 	loadText(sourcePath, loadSuccess);
 }
 
+function createProgram(gl, vSourcePath, fSourcePath, success) {
 	
 	//load shaders
+	createShader(gl, gl.VERTEX_SHADER, vSourcePath, function (vs) {
+	createShader(gl, gl.FRAGMENT_SHADER, fSourcePath, function (fs){
 		
 		var program = gl.createProgram();
 		gl.attachShader(program, vs);
@@ -45,6 +48,7 @@ function createShader(gl, type, sourcePath, createSuccess) {
 		gl.linkProgram(program);
 		
 		if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+			alert("Failed to link program:\n" + vSourcePath + "\n" + fSourcePath + "\n" + gl.getProgramInfoLog(program));
 			return;
 		}
 		
