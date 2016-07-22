@@ -88,8 +88,6 @@ function loadModel(gl, path, success) {
 		
 		var model = JSON.parse(data);
 		
-		console.log(model);
-		
 		var posFloats = model.geometries[0].data.vertices;
 		var normalFloats = model.geometries[0].data.normals;
 		
@@ -268,8 +266,6 @@ function init() {
 	loadModel(gl, "models/utah-teapot.json", function(model) {
 
 		createProgram(gl, "shaders/test.vs", "shaders/test.fs", function (program){
-			
-			console.log(model);
 			
 			//set locations of vertex attributes
 			gl.bindAttribLocation(program, ATTRIB_POS_LOCATION, "position");
