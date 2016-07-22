@@ -36,6 +36,7 @@ function createShader(gl, type, sourcePath, createSuccess) {
 	loadText(sourcePath, loadSuccess);
 }
 
+//
 function createProgram(gl, vSourcePath, fSourcePath, success) {
 	
 	//load shaders
@@ -56,15 +57,52 @@ function createProgram(gl, vSourcePath, fSourcePath, success) {
 	});});
 }
 
+/*
+* Loads a model in a format 
+*/
+function loadModel(gl, path, success) {
 
-loadText("models/utah-teapot.json", function(data) {
-	
-	var model = JSON.parse(data);
-	
+	loadText(path, function(data) {
+		
+		var model = JSON.parse(data);
+		
+		var customModel = {
+			vertices: model.geometries[0].data.vertices,
+			indices: model.geometries[0].data.faces
+		}
+		
+		customModel.vb = gl.createBuffer();
+		gl.bindBuffer(gl.ARRAY_BUFFER, customModel.vb);
+		gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(customModel.vertices), gl.STATIC_DRAW);
+		
+		customModel.ib = gl.createBuffer();
+		gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, customModel.ib);
+		gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Int32Array(customModel.vertices), gl.STATIC_DRAW);
+		
+		customModel.bind = function() {
+			gl.bindBuffer(gl.ARRAY_BUFFER, self.vb);
+			gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, self.ib);
+		};
+		
+		success(customModel);
+	});
+}
+
+loadModel(gl, "models/utah-teapot.json", function(model) {
+
 	var program = createProgram(gl, "shaders/test.vs", "shaders/test.fs", function (program){
+		
+		gl.useProgram(program);
+		
 		alert("program created successfully");
 	});
 	
+	
+	
 });
 
+init = function() {=
+    gl.clearColor(0.5, 0.5, 0.5, 1.0);
+};
 
+init();
