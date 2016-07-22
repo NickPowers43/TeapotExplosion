@@ -88,21 +88,22 @@ function loadModel(gl, path, success) {
 	});
 }
 
-loadModel(gl, "models/utah-teapot.json", function(model) {
-
-	var program = createProgram(gl, "shaders/test.vs", "shaders/test.fs", function (program){
-		
-		gl.useProgram(program);
-		
-		alert("program created successfully");
-	});
-	
-	
-	
-});
-
-init = function() {=
+init = function() {
     gl.clearColor(0.5, 0.5, 0.5, 1.0);
+    gl.enable(gl.DEPTH_TEST);
+	
+	loadModel(gl, "models/utah-teapot.json", function(model) {
+
+		var program = createProgram(gl, "shaders/test.vs", "shaders/test.fs", function (program){
+			
+			gl.useProgram(program);
+			
+			alert("program created successfully");
+		});
+		
+		
+		
+	});
 };
 
 init();
