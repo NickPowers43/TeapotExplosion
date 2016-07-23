@@ -98,6 +98,24 @@ function loadModel(gl, path, success) {
 		var indices = threeJSGeometry.data.faces;
 		var normalFloats2 = [];
 		
+		//swap z and y values
+		if(true) {
+			for(var i = 0; i < posFloats.length;i++) {
+				i++;
+				var temp = posFloats[i];
+				posFloats[i] = posFloats[i+1];
+				i++;
+				posFloats[i] = temp;
+			}
+			for(var i = 0; i < normalFloats.length;i++) {
+				i++;
+				var temp = normalFloats[i];
+				normalFloats[i] = normalFloats[i+1];
+				i++;
+				normalFloats[i] = temp;
+			}
+		}
+		
 		//maps position indices to correct normal indices
 		var posNormalMap = [];
 		
@@ -212,7 +230,9 @@ function addFaceNormals(model) {
 		var vAB = vec3.create();
 		var vAC = vec3.create();
 		vec3.subtract(vAB, pos[1], pos[0]);
+		vec3.normalize(vAB, vAB);
 		vec3.subtract(vAC, pos[2], pos[0]);
+		vec3.normalize(vAC, vAC);
 		
 		vec3.cross(faceNormal, vAB, vAC);
 		vec3.normalize(faceNormal, faceNormal);
@@ -292,6 +312,17 @@ function drawModel(model) {
 	
 }
 
+var angle = 0.0;
+var time = 0.0;
+
+var tpColorBase = vec3.create();
+vec3.set(tpColorBase, 0.5, 0.5, 0.5);
+var tpColorHot = vec3.create();
+vec3.set(tpColorHot, 255.0 / 255.0, 251.0 / 255.0, 140.0 / 255.0);
+
+var minusLightDir = vec3.create();
+vec3.set(minusLightDir, 0.0, 1.0, 0.0);
+
 function render(context) {
 	
 	resizeCanvas();
@@ -301,14 +332,55 @@ function render(context) {
 	
 	gl.useProgram(context.program);
 	
-	var projMat = new Perspective(Math.PI * 0.35, canvas.width / canvas.height, 0.1, 1000.0);
 	var projMatLocation = gl.getUniformLocation(context.program, "proj");
-	gl.uniformMatrix4fv(projMatLocation, false, projMat.vals);
+	//var viewMatLocation = gl.getUniformLocation(context.program, "view");
+	var modelMatLocation = gl.getUniformLocation(context.program, "model");
+	var timeFloatLocation = gl.getUniformLocation(context.program, "time");
+	var colorVecLocation = gl.getUniformLocation(context.program, "color");
+	var minusLightDirVecLocation = gl.getUniformLocation(context.program, "minusLightDir");
+	
+	var projMat = mat4.create();// = new Perspective(Math.PI * 0.35, canvas.width / canvas.height, 0.1, 1000.0);
+	mat4.perspective(projMat, Math.PI * 0.35, canvas.width / canvas.height, 0.1, 1000.0);
+	
+	var tpColor = vec3.create();
+	vec3.lerp(tpColor, tpColorBase, tpColorHot, 0.5);
+	
+	var camPos = vec3.create();
+	camPos[0] = Math.cos(angle) * 100.0;
+	camPos[1] = 0.0;
+	camPos[2] = Math.sin(angle) * 100.0;
+	var up = vec3.create();
+	up[1] = 1.0;
+	var zero = vec3.create();
+	
+	var viewMat = mat4.create();
+	
+	var modelPos = vec3.create();
+	modelPos[2] = -50.0;
+	modelPos[1] = -15.0;
+	var modelMat = mat4.create();
+	var tempMat = mat4.create();
+	
+	mat4.translate(tempMat, mat4.create(), modelPos);
+	mat4.rotate(modelMat, tempMat, angle, up);
+	
+	gl.uniformMatrix4fv(projMatLocation, false, projMat);
+	//gl.uniformMatrix4fv(viewMatLocation, false, viewMat);
+	gl.uniformMatrix4fv(modelMatLocation, false, modelMat);
+	gl.uniform1f(timeFloatLocation, time);
+	gl.uniform3fv(colorVecLocation, tpColor);
+	gl.uniform3fv(minusLightDirVecLocation, tpColor);
 	
 	gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 	
 	bindModel(context.model);
 	drawModel(context.model);
+	
+	//angle += 0.005;
+	//time += 0.016;
+	if(time > 4.0){
+		time = 0.0;
+	}
 	
 	//callback for next frame
 	window.setTimeout(function (){
