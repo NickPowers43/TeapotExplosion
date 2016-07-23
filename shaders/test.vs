@@ -11,7 +11,7 @@ void main() {
 	
 	normal_ = normal;
 	
-	vec3 posFinal = position + (tNormal * 0.00001);
+	vec3 posFinal = position + (tNormal * 0.0);
 	
     gl_Position = vec4(posFinal + vec3(0.0, 0.0, -200.0), 1.0) * proj;
 }  

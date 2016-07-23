@@ -88,10 +88,17 @@ function loadModel(gl, path, success) {
 		
 		var model = JSON.parse(data);
 		
-		var posFloats = model.geometries[0].data.vertices;
-		var normalFloats = model.geometries[0].data.normals;
+		console.log(model);
 		
-		var indices = model.geometries[0].data.faces;
+		var threeJSGeometry = model.geometries[0];
+		
+		var vertexCount = threeJSGeometry.data.metadata.vertices;
+		var posFloats = threeJSGeometry.data.vertices;
+		var normalFloats = threeJSGeometry.data.normals;
+		var indices = threeJSGeometry.data.faces;
+		
+		//maps position indices to correct normal indices
+		var posNormalMap = [];
 		
 		var tIndices = [];
 		//convert from QUADS to TRIANGLES format
@@ -100,30 +107,26 @@ function loadModel(gl, path, success) {
 			var type = indices[i++];
 			
 			var isQuad = type & 1;
+			var vPerFace = (isQuad) ? 4 : 3;
 			
-			if (isQuad) {
-				var a = indices[i++];
-				var b = indices[i++];
-				var c = indices[i++];
-				var d = indices[i++];
-				
-				tIndices.push(a);
-				tIndices.push(b);
-				tIndices.push(d);
-				
-				tIndices.push(d);
-				tIndices.push(b);
-				tIndices.push(c);
-			} else {
-				var a = indices[i++];
-				var b = indices[i++];
-				var c = indices[i++];
-				
-				tIndices.push(a);
-				tIndices.push(b);
-				tIndices.push(c);
+			var posI = []
+			for(var j = 0; j < vPerFace; j++){
+				posI.push(indices[i++]);
 			}
 			
+			if (isQuad) {
+				tIndices.push(posI[0]);
+				tIndices.push(posI[1]);
+				tIndices.push(posI[3]);
+				
+				tIndices.push(posI[3]);
+				tIndices.push(posI[1]);
+				tIndices.push(posI[2]);
+			} else {
+				for(var j = 0; j < vPerFace; j++){
+					tIndices.push(i);
+				}
+			}
 			
 			if(type & 2) {
 				i++;//skip face material id
@@ -135,10 +138,8 @@ function loadModel(gl, path, success) {
 			
 			if(type & 8) {
 				//skip face vertex uvs
-				if (isQuad) {
-					i++;i++;i++;i++;
-				} else {
-					i++;i++;i++;
+				for(var j = 0; j < vPerFace; j++){
+					i++;
 				}
 			}
 			
@@ -148,27 +149,12 @@ function loadModel(gl, path, success) {
 			
 			if(type & 32)
 			{
-				if (isQuad) {
-					var nA = indices[i++];
-					var nB = indices[i++];
-					var nC = indices[i++];
-					var nD = indices[i++];
-					
-					//tIndices.push(a);
-					//tIndices.push(b);
-					//tIndices.push(d);
-					
-					//tIndices.push(d);
-					//tIndices.push(b);
-					//tIndices.push(c);
-				} else {
-					var a = indices[i++];
-					var b = indices[i++];
-					var c = indices[i++];
-					
-					//tIndices.push(a);
-					//tIndices.push(b);
-					//tIndices.push(c);
+				//skip normal indices
+				for(var j = 0; j < vPerFace; j++){
+					//if(posNormalMap[posI[j]] === undefined){
+					//	posNormalMap[posI[j]] = indices[i++];
+					//}
+					i++;
 				}
 			}
 			
@@ -178,45 +164,105 @@ function loadModel(gl, path, success) {
 			
 			if(type & 128) {
 				//skip face vertex color
-				if (isQuad) {
-					i++;i++;i++;i++;
-				} else {
-					i++;i++;i++;
+				for(var j = 0; j < vPerFace; j++){
+					i++;
 				}
 			}
 		}
 		indices = tIndices;
 		
-		var interleavedBuffer = [];
-		//convert seperate buffers into interleaved buffer
-		var j = 0;
-		var i = 0;
-		for(; i < posFloats.length;) {
-			interleavedBuffer.push(posFloats[i++]);
-			interleavedBuffer.push(posFloats[i++]);
-			interleavedBuffer.push(posFloats[i++]);
-			interleavedBuffer.push(normalFloats[j++]);
-			interleavedBuffer.push(normalFloats[j++]);
-			interleavedBuffer.push(normalFloats[j++]);
-			interleavedBuffer.push(0.0);
-			interleavedBuffer.push(0.0);
-			interleavedBuffer.push(0.0);
-		}
-		
-		var vb = gl.createBuffer();
-		gl.bindBuffer(gl.ARRAY_BUFFER, vb);
-		gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(interleavedBuffer), gl.STATIC_DRAW);
-		
-		var ib = gl.createBuffer();
-		gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ib);
-		gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW);
-		
 		success({
-			vb: vb,
-			ib: ib,
+			indices: indices,
+			posFloats: posFloats,
+			normalFloats: normalFloats,
 			indexCount: indices.length
 		});
 	});
+}
+
+function addFaceNormals(model) {
+	
+	//calculate face normals for each group of three indices
+	var faceNormals = [];
+	for(var i = 0; i < model.indices.length;) {
+		
+		//array of points that make up this triangle. 0 = A, 1 = B, 2 = C
+		var pos = [];
+		for(var j = 0; j < 3;j++) {
+			var vertexID = model.indices[i++];
+			
+			faceNormals[vertexID] = faceNormal;
+			
+			pos.push(vec3.create());
+			var floatI = vertexID * 3;
+			for(var k = 0; k < 3; k++) {
+				pos[j][k] = model.posFloats[floatI++];
+			}
+		}
+		
+		var faceNormal = vec3.create();
+		faceNormals.push(faceNormal);
+		
+		
+		//vectors that represent two edges of the triangle
+		var vAB = vec3.create();
+		var vAC = vec3.create();
+		vec3.subtract(vAB, pos[1], pos[0]);
+		vec3.subtract(vAC, pos[2], pos[0]);
+		
+		vec3.cross(faceNormal, vAB, vAC);
+		vec3.normalize(faceNormal, faceNormal);
+	}
+	
+	model.faceNormals = faceNormals;
+	model.drawArray = true;
+}
+
+function createModelBufferArrays(model, success) {
+	
+	var interleavedBuffer = [];
+	if(model.drawArray) {
+		//convert seperate buffers into interleaved buffer
+		for(var triangleI = 0; triangleI < model.faceNormals.length; triangleI++) {
+			for(var j = 0; j < 3; j++) {
+				
+				var vertexID = model.indices[(triangleI * 3) + j];
+				
+				var posFloatI = vertexID * 3;
+				var normalFloatI = posFloatI;//posNormalMap[vertexID] * 3;
+				
+				//append position
+				interleavedBuffer.push(model.posFloats[posFloatI++]);
+				interleavedBuffer.push(model.posFloats[posFloatI++]);
+				interleavedBuffer.push(model.posFloats[posFloatI++]);
+				//append per vertex normal
+				interleavedBuffer.push(model.normalFloats[normalFloatI++]);
+				interleavedBuffer.push(model.normalFloats[normalFloatI++]);
+				interleavedBuffer.push(model.normalFloats[normalFloatI++]);
+				//append face normal
+				interleavedBuffer.push(model.faceNormals[triangleI][0]);
+				interleavedBuffer.push(model.faceNormals[triangleI][1]);
+				interleavedBuffer.push(model.faceNormals[triangleI][2]);
+				
+			}
+		}
+		
+		model.vertexCount = model.faceNormals.length * 3;
+		
+	} else {
+		//we dont handle this case
+		return;
+		
+		model.ib = gl.createBuffer();
+		gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, model.ib);
+		gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(model.indices), gl.STATIC_DRAW);
+	}
+	
+	model.vb = gl.createBuffer();
+	gl.bindBuffer(gl.ARRAY_BUFFER, model.vb);
+	gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(interleavedBuffer), gl.STATIC_DRAW);
+	
+	success(model);
 }
 
 function bindModel(model) {
@@ -230,6 +276,16 @@ function bindModel(model) {
 	gl.vertexAttribPointer(ATTRIB_TNORMAL_LOCATION, 3, gl.FLOAT, false, 36, 24);
 	
 	gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, model.ib);
+}
+
+function drawModel(model) {
+	
+	if(model.drawArray) {
+		gl.drawArrays(gl.TRIANGLES, 0, model.vertexCount);
+	} else {
+		gl.drawElements(gl.TRIANGLES, model.indexCount, gl.UNSIGNED_SHORT, 0);
+	}
+	
 }
 
 function render(context) {
@@ -248,9 +304,7 @@ function render(context) {
 	gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 	
 	bindModel(context.model);
-	gl.drawElements(gl.TRIANGLES, context.model.indexCount, gl.UNSIGNED_SHORT, 0);
-	//gl.drawArrays(gl.TRIANGLES, 0, 3);
-	
+	drawModel(context.model);
 	
 	//callback for next frame
 	window.setTimeout(function (){
@@ -264,24 +318,26 @@ function init() {
 	gl.disable(gl.CULL_FACE);
 	
 	loadModel(gl, "models/utah-teapot.json", function(model) {
-
-		createProgram(gl, "shaders/test.vs", "shaders/test.fs", function (program){
+		
+		addFaceNormals(model);
+		createModelBufferArrays(model, function(model) {
 			
-			//set locations of vertex attributes
-			gl.bindAttribLocation(program, ATTRIB_POS_LOCATION, "position");
-			gl.bindAttribLocation(program, ATTRIB_NORMAL_LOCATION, "normal");
-			gl.bindAttribLocation(program, ATTRIB_TNORMAL_LOCATION, "tNormal");
+			createProgram(gl, "shaders/test.vs", "shaders/test.fs", function (program){
+				
+				//set locations of vertex attributes
+				gl.bindAttribLocation(program, ATTRIB_POS_LOCATION, "position");
+				gl.bindAttribLocation(program, ATTRIB_NORMAL_LOCATION, "normal");
+				gl.bindAttribLocation(program, ATTRIB_TNORMAL_LOCATION, "tNormal");
+				
+				var context = {
+					program: program,
+					model: model
+				};
+				
+				render(context);
+			});
 			
-			var context = {
-				program: program,
-				model: model
-			};
-			
-			render(context);
 		});
-		
-		
-		
 	});
 }
 
