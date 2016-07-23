@@ -96,6 +96,7 @@ function loadModel(gl, path, success) {
 		var posFloats = threeJSGeometry.data.vertices;
 		var normalFloats = threeJSGeometry.data.normals;
 		var indices = threeJSGeometry.data.faces;
+		var normalFloats2 = [];
 		
 		//maps position indices to correct normal indices
 		var posNormalMap = [];
@@ -151,10 +152,13 @@ function loadModel(gl, path, success) {
 			{
 				//skip normal indices
 				for(var j = 0; j < vPerFace; j++){
-					//if(posNormalMap[posI[j]] === undefined){
-					//	posNormalMap[posI[j]] = indices[i++];
-					//}
-					i++;
+					
+					var dstI = posI[j] * 3;
+					var srcI = indices[i++] * 3;
+					
+					for(var k = 0; k < 3; k++) {
+						normalFloats2[dstI++] = normalFloats[srcI++];
+					}
 				}
 			}
 			
@@ -174,7 +178,7 @@ function loadModel(gl, path, success) {
 		success({
 			indices: indices,
 			posFloats: posFloats,
-			normalFloats: normalFloats,
+			normalFloats: normalFloats2,
 			indexCount: indices.length
 		});
 	});
@@ -229,7 +233,7 @@ function createModelBufferArrays(model, success) {
 				var vertexID = model.indices[(triangleI * 3) + j];
 				
 				var posFloatI = vertexID * 3;
-				var normalFloatI = posFloatI;//posNormalMap[vertexID] * 3;
+				var normalFloatI = vertexID * 3;//posNormalMap[vertexID] * 3;
 				
 				//append position
 				interleavedBuffer.push(model.posFloats[posFloatI++]);
