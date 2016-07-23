@@ -10,8 +10,11 @@ SHADER_TYPE_NAME_MAP[gl.FRAGMENT_SHADER] = "fragment";
 
 var ATTRIB_POS_LOCATION = 0;
 var ATTRIB_NORMAL_LOCATION = 1;
-var ATTRIB_TNORMAL_LOCATION = 2;
+var ATTRIB_TRAJECTORY_LOCATION = 2;
 
+/*
+* Resize canvas buffer to fit its current size on the screen
+*/
 function resizeCanvas() {
 	var width  = canvas.clientWidth;
 	var height = canvas.clientHeight;
@@ -23,15 +26,20 @@ function resizeCanvas() {
 	}
 }
 
-function loadText(path, loadSuccess) {
+/*
+* Loads a file in a text format from the given url
+*/
+function loadText(url, loadSuccess) {
 	$.ajax({
-		url : path,
+		url : url,
 		dataType: "text",
 		success : loadSuccess
 	});
 }
 
-//load and compile shader
+/*
+* Load and compile a shader program from source files at the following urls
+*/
 function createShader(gl, type, sourcePath, createSuccess) {
 	
 	function loadSuccess(source) {
@@ -77,9 +85,10 @@ function createProgram(gl, vSourcePath, fSourcePath, success) {
 /*
 * Imports a Three.js model in the following format
 * {
-* 	indexCount : Integer, 	//number of indices
-* 	vb : WebGLBuffer, 		//array of components for vertices [posX, posY, posZ, normalX, normalY, normalZ, tNormalX, tNormalY, tNormalZ, ...]
-* 	ib : WebGLBuffer, 		//array of indices (TRIANGLES)
+* 	indices: [ Integer, ...],
+*	posFloats: [ Float, ...],
+*	normalFloats: [ Float, ...],
+*	indexCount: indices.length
 * }
 */
 function loadModel(gl, path, success) {
@@ -204,6 +213,10 @@ function loadModel(gl, path, success) {
 
 function addFaceNormals(model) {
 	
+	var randomMag = 0.1;
+	var halfVector = vec3.create();
+	vec3.set(halfVector, 0.5, 0.5, 0.5);
+	
 	//calculate face normals for each group of three indices
 	var faceNormals = [];
 	for(var i = 0; i < model.indices.length;) {
@@ -236,12 +249,30 @@ function addFaceNormals(model) {
 		
 		vec3.cross(faceNormal, vAB, vAC);
 		vec3.normalize(faceNormal, faceNormal);
+		
+		//since the face normals are being used to calculate the triangles trajectory during the explosion
+		//we can add some randomness to this normal vector to get a less uniform explosion effect.
+		var ranV = vec3.create();
+		vec3.set(ranV, Math.random(), Math.random(), Math.random());
+		vec3.subtract(ranV, ranV, halfVector);
+		vec3.scale(ranV, ranV, 2.0 * randomMag);
+		
+		vec3.add(faceNormal, faceNormal, ranV);
+		//vec3.normalize(faceNormal, faceNormal);
 	}
 	
 	model.faceNormals = faceNormals;
 	model.drawArray = true;
 }
 
+/*
+* Creates the necessary vertex and index buffers for the given model
+* {
+* 	indexCount : Integer, 	//number of indices
+* 	vb : WebGLBuffer, 		//vertex buffer containing [posX, posY, posZ, normalX, normalY, normalZ, tNormalX, tNormalY, tNormalZ, ...]
+* 	ib : WebGLBuffer, 		//index buffer containing triangle indices
+* }
+*/
 function createModelBufferArrays(model, success) {
 	
 	var interleavedBuffer = [];
@@ -292,12 +323,14 @@ function createModelBufferArrays(model, success) {
 function bindModel(model) {
 	
 	gl.bindBuffer(gl.ARRAY_BUFFER, model.vb);
+	
 	gl.enableVertexAttribArray(ATTRIB_POS_LOCATION);
 	gl.enableVertexAttribArray(ATTRIB_NORMAL_LOCATION);
-	gl.enableVertexAttribArray(ATTRIB_TNORMAL_LOCATION);
+	gl.enableVertexAttribArray(ATTRIB_TRAJECTORY_LOCATION);
+	
 	gl.vertexAttribPointer(ATTRIB_POS_LOCATION, 3, gl.FLOAT, false, 36, 0);
 	gl.vertexAttribPointer(ATTRIB_NORMAL_LOCATION, 3, gl.FLOAT, false, 36, 12);
-	gl.vertexAttribPointer(ATTRIB_TNORMAL_LOCATION, 3, gl.FLOAT, false, 36, 24);
+	gl.vertexAttribPointer(ATTRIB_TRAJECTORY_LOCATION, 3, gl.FLOAT, false, 36, 24);
 	
 	gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, model.ib);
 }
@@ -356,7 +389,7 @@ function render(context) {
 	var viewMat = mat4.create();
 	
 	var modelPos = vec3.create();
-	modelPos[2] = -50.0;
+	modelPos[2] = -100.0;
 	modelPos[1] = -15.0;
 	var modelMat = mat4.create();
 	var tempMat = mat4.create();
@@ -377,7 +410,7 @@ function render(context) {
 	drawModel(context.model);
 	
 	//angle += 0.005;
-	//time += 0.016;
+	time += 0.016;
 	if(time > 4.0){
 		time = 0.0;
 	}
@@ -393,17 +426,17 @@ function init() {
     gl.enable(gl.DEPTH_TEST);
 	gl.disable(gl.CULL_FACE);
 	
-	loadModel(gl, "models/utah-teapot.json", function(model) {
+	loadModel(gl, "models/utah-teapot.json", function success(model) {
 		
 		addFaceNormals(model);
-		createModelBufferArrays(model, function(model) {
+		createModelBufferArrays(model, function success(model) {
 			
-			createProgram(gl, "shaders/test.vs", "shaders/test.fs", function (program){
+			createProgram(gl, "shaders/test.vs", "shaders/test.fs", function success(program){
 				
 				//set locations of vertex attributes
 				gl.bindAttribLocation(program, ATTRIB_POS_LOCATION, "position");
 				gl.bindAttribLocation(program, ATTRIB_NORMAL_LOCATION, "normal");
-				gl.bindAttribLocation(program, ATTRIB_TNORMAL_LOCATION, "tNormal");
+				gl.bindAttribLocation(program, ATTRIB_TRAJECTORY_LOCATION, "trajectory");
 				
 				var context = {
 					program: program,
