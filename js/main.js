@@ -9,6 +9,7 @@ document.body.appendChild(stats.domElement);
 
 var controller = {
   tesselation: 1,
+  instances: 3,
 }
 
 var gui;
@@ -214,6 +215,9 @@ function importModel(threeJSModelObject, modelOut) {
   modelOut.indexCount = indices.length;
 }
 
+/*
+* Calculate normals for each triangle face and store them in "model.faceNormals"
+*/
 function addFaceNormals(model) {
 	
 	var randomMag = 0.1;
@@ -266,6 +270,96 @@ function addFaceNormals(model) {
 	
 	model.faceNormals = faceNormals;
 	model.drawArray = true;
+}
+
+/*
+* Tesselates the triangles of the model's mesh using controller.tesselation
+*/
+function tesselateModel(model) {
+  
+  var posFloatsOut = model.posFloats;
+  //posFloatsOut.concat(model.posFloats);
+  var indicesOut = [];
+  var normalFloatsOut = model.normalFloats;
+  //normalFloatsOut.concat(model.normalFloats);
+  
+  function appendVertex(pos, normal) {
+    posFloatsOut.push(pos[0], pos[1], pos[2]);
+    normalFloatsOut.push(normal[0], normal[1], normal[2]);
+  }
+  
+  function getVec3(fArray, index) {
+    var offset = index * 3;
+    var output = vec3.create();
+    vec3.set(output, fArray[offset], fArray[offset+1], fArray[offset+2]);
+    return output;
+  }
+  
+  //amount > 0
+  function subdivideTriangle(indices, amount) {
+    
+    var positions = [];
+    var normals = [];
+    for(var i = 0; i < 3;i++) {
+      positions.push(getVec3(posFloatsOut, indices[i]));
+      normals.push(getVec3(normalFloatsOut, indices[i]));
+    }
+    
+    var interpolatedPositions = [];
+    var interpolatedNormals = [];
+    for(var i = 0; i < 3;i++) {
+      //interpolate positions
+      interpolatedPositions.push(vec3.create());
+      vec3.subtract(interpolatedPositions[i], positions[i], positions[(i+1)%3]);
+      vec3.scale(interpolatedPositions[i], interpolatedPositions[i], 0.5);
+      vec3.add(interpolatedPositions[i], interpolatedPositions[i], positions[i]);
+      //average and normalize normals
+      interpolatedNormals.push(vec3.create());
+      vec3.add(interpolatedNormals[i], normals[i], normals[(i+1)%3]);
+      vec3.scale(interpolatedNormals[i], interpolatedPositions[i], 0.5);
+      vec3.normalize(interpolatedNormals[i], interpolatedNormals[i]);
+    }
+    var offset = posFloatsOut.length / 3;
+    //push our newly created vertices
+    for(var i = 0; i < 3; i++) {
+      appendVertex(interpolatedPositions[i], interpolatedNormals[i]);
+    }
+    
+    function subTriangle(a, b, c, amount) {
+      
+      if(amount < 1){
+        indicesOut.push(a, b, c);
+      } else {
+        subdivideTriangle([a, b, c], amount-1);
+      }
+    }
+    
+    //reference our newly created vertices
+    subTriangle(indices[0], offset, offset+2, amount-1);
+    subTriangle(offset, indices[1],offset+1, amount-1);
+    subTriangle(offset+2, offset+1, indices[2], amount-1);
+    subTriangle(offset, offset+1, offset+2, amount-1);
+  }
+  
+  controller.tesselation = controller.tesselation|0;//make sure it is an integer
+  if(controller.tesselation > 0) {
+    for(var i = 0; i < model.indices.length;) {
+      
+      var indices = [];
+      indices.push(model.indices[i++]);
+      indices.push(model.indices[i++]);
+      indices.push(model.indices[i++]);
+      
+      subdivideTriangle(indices, controller.tesselation);
+    }
+  } else {
+    //do nothing
+    indicesOut = model.indices;
+  }
+  
+  model.indices = indicesOut;
+  model.normalFloats = normalFloatsOut;
+  model.posFloats = posFloatsOut;
 }
 
 /*
@@ -341,7 +435,6 @@ function bindModel(model) {
 	
 	gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, model.ib);
 }
-
 function drawModel(model) {
 	
 	if(model.drawArray) {
@@ -354,6 +447,11 @@ function drawModel(model) {
 
 var angle = 0.0;
 var time = 0.0;
+var explode = false;
+
+controller.explode = function() {
+  explode = !explode;
+}
 
 var tpColorBase = vec3.create();
 vec3.set(tpColorBase, 0.5, 0.5, 0.5);
@@ -368,8 +466,8 @@ var model = {};
 function render(context) {
 	
 	resizeCanvas();
-	
 	gl.viewport(0, 0, canvas.width, canvas.height);
+	gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 	
 	gl.useProgram(mainProgram);
 	
@@ -391,37 +489,53 @@ function render(context) {
 	camPos[1] = 0.0;
 	camPos[2] = Math.sin(angle) * 100.0;
 	var up = vec3.create();
-	up[1] = 1.0;
+  vec3.set(up, 0.0, 1.0, 0.0);
+  var right = vec3.create();
+  vec3.set(right, 1.0, 0.0, 0.0);
+  
 	var zero = vec3.create();
 	
 	var viewMat = mat4.create();
+  //gl.uniformMatrix4fv(viewMatLocation, false, viewMat);
 	
 	var modelPos = vec3.create();
-	modelPos[2] = -100.0;
-	modelPos[1] = -15.0;
+  vec3.set(modelPos, 0.0, -15.0, -200.0);
+  
 	var modelMat = mat4.create();
 	var tempMat = mat4.create();
 	
-	mat4.translate(tempMat, mat4.create(), modelPos);
-	mat4.rotate(modelMat, tempMat, angle, up);
-	
-	gl.uniformMatrix4fv(projMatLocation, false, projMat);
-	//gl.uniformMatrix4fv(viewMatLocation, false, viewMat);
-	gl.uniformMatrix4fv(modelMatLocation, false, modelMat);
-	gl.uniform1f(timeFloatLocation, time);
-	gl.uniform3fv(colorVecLocation, tpColor);
-	gl.uniform3fv(minusLightDirVecLocation, tpColor);
-	
-	gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-	
-	bindModel(model);
-	drawModel(model);
-	
-	//angle += 0.005;
-	time += 0.016;
+  //render array of teapots arranged in a circle
+  var objRot = 0.0;
+  var objRotInc = Math.PI * 2.0 / (controller.instances|0);
+  for(var i = 0; i < (controller.instances|0); i++) {
+    
+    mat4.translate(tempMat, mat4.create(), modelPos);
+    mat4.rotate(tempMat, tempMat, Math.PI / 4.0, right);
+    mat4.rotate(tempMat, tempMat, objRot, up);
+    mat4.translate(modelMat, tempMat, modelPos);
+    
+    gl.uniformMatrix4fv(projMatLocation, false, projMat);
+    gl.uniformMatrix4fv(modelMatLocation, false, modelMat);
+    gl.uniform1f(timeFloatLocation, time);
+    gl.uniform3fv(colorVecLocation, tpColor);
+    gl.uniform3fv(minusLightDirVecLocation, tpColor);
+    
+    bindModel(model);
+    drawModel(model);
+    
+    objRot += objRotInc;
+  }
+  
+	angle += 0.005;
+  
 	if(time > 4.0){
+    explode = false;
 		time = 0.0;
-	}
+	} else if (explode) {
+    time += 0.016;
+  } else {
+    time = 0.0;
+  }
   
   stats.update();
 	
@@ -435,9 +549,11 @@ var threeJSModel;
 
 function resetScene() {
   importModel(threeJSModel, model);
-  //tesselateModel(model, controller.tesselation);
+  tesselateModel(model, controller.tesselation);
   addFaceNormals(model);
   createModelBufferArrays(model);
+  
+  
 }
 
 function init() {
@@ -456,7 +572,9 @@ loadText("models/utah-teapot.json", function(data) {
     gl.bindAttribLocation(program, ATTRIB_TRAJECTORY_LOCATION, "trajectory");
 
     gui = new dat.GUI();
-    gui.add(controller, "tesselation", 1, 5).onChange(resetScene);
+    gui.add(controller, "tesselation", 1, 4).onChange(resetScene);
+    gui.add(controller, "instances", 1, 100).onChange(resetScene);
+    gui.add(controller, "explode");
 
     init();
     resetScene();
