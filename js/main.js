@@ -4,6 +4,16 @@
 var canvas = document.getElementById("canvas")
 var gl = canvas.getContext("webgl");
 
+var stats = new Stats();
+document.body.appendChild(stats.domElement);
+
+var controller = {
+  tesselation: 1,
+}
+
+var gui;
+var mainProgram;
+
 var SHADER_TYPE_NAME_MAP = {};
 SHADER_TYPE_NAME_MAP[gl.VERTEX_SHADER] = "vertex";
 SHADER_TYPE_NAME_MAP[gl.FRAGMENT_SHADER] = "fragment";
@@ -86,129 +96,122 @@ function createProgram(gl, vSourcePath, fSourcePath, success) {
 * Imports a Three.js model in the following format
 * {
 * 	indices: [ Integer, ...],
-*	posFloats: [ Float, ...],
-*	normalFloats: [ Float, ...],
-*	indexCount: indices.length
+*	  posFloats: [ Float, ...],
+*	  normalFloats: [ Float, ...],
+*	  indexCount: indices.length
 * }
 */
-function loadModel(gl, path, success) {
+function importModel(threeJSModelObject, modelOut) {
 
-	loadText(path, function(data) {
-		
-		var model = JSON.parse(data);
-		
-		console.log(model);
-		
-		var threeJSGeometry = model.geometries[0];
-		
-		var vertexCount = threeJSGeometry.data.metadata.vertices;
-		var posFloats = threeJSGeometry.data.vertices;
-		var normalFloats = threeJSGeometry.data.normals;
-		var indices = threeJSGeometry.data.faces;
-		var normalFloats2 = [];
-		
-		//swap z and y values
-		if(true) {
-			for(var i = 0; i < posFloats.length;i++) {
-				i++;
-				var temp = posFloats[i];
-				posFloats[i] = posFloats[i+1];
-				i++;
-				posFloats[i] = temp;
-			}
-			for(var i = 0; i < normalFloats.length;i++) {
-				i++;
-				var temp = normalFloats[i];
-				normalFloats[i] = normalFloats[i+1];
-				i++;
-				normalFloats[i] = temp;
-			}
-		}
-		
-		//maps position indices to correct normal indices
-		var posNormalMap = [];
-		
-		var tIndices = [];
-		//convert from QUADS to TRIANGLES format
-		for(var i = 0; i < indices.length;)
-		{
-			var type = indices[i++];
-			
-			var isQuad = type & 1;
-			var vPerFace = (isQuad) ? 4 : 3;
-			
-			var posI = []
-			for(var j = 0; j < vPerFace; j++){
-				posI.push(indices[i++]);
-			}
-			
-			if (isQuad) {
-				tIndices.push(posI[0]);
-				tIndices.push(posI[1]);
-				tIndices.push(posI[3]);
-				
-				tIndices.push(posI[3]);
-				tIndices.push(posI[1]);
-				tIndices.push(posI[2]);
-			} else {
-				for(var j = 0; j < vPerFace; j++){
-					tIndices.push(i);
-				}
-			}
-			
-			if(type & 2) {
-				i++;//skip face material id
-			}
-			
-			if(type & 4) {
-				i++;//skip face uv
-			}
-			
-			if(type & 8) {
-				//skip face vertex uvs
-				for(var j = 0; j < vPerFace; j++){
-					i++;
-				}
-			}
-			
-			if(type & 16) {
-				i++;//skip face normal
-			}
-			
-			if(type & 32)
-			{
-				//skip normal indices
-				for(var j = 0; j < vPerFace; j++){
-					
-					var dstI = posI[j] * 3;
-					var srcI = indices[i++] * 3;
-					
-					for(var k = 0; k < 3; k++) {
-						normalFloats2[dstI++] = normalFloats[srcI++];
-					}
-				}
-			}
-			
-			if(type & 64) {
-				i++;//skip face color
-			}
-			
-			if(type & 128) {
-				//skip face vertex color
-				for(var j = 0; j < vPerFace; j++){
-					i++;
-				}
-			}
-		}
-		indices = tIndices;
-		
-		success({
-			indices: indices,
-			posFloats: posFloats,
-			normalFloats: normalFloats2,
-			indexCount: indices.length
-		});
-	});
+  var model = threeJSModelObject;
+  
+  var threeJSGeometry = model.geometries[0];
+  
+  var vertexCount = threeJSGeometry.data.metadata.vertices;
+  var posFloats = threeJSGeometry.data.vertices;
+  var normalFloats = threeJSGeometry.data.normals;
+  var indices = threeJSGeometry.data.faces;
+  var normalFloats2 = [];
+  
+  //swap z and y values
+  if(true) {
+    for(var i = 0; i < posFloats.length;i++) {
+      i++;
+      var temp = posFloats[i];
+      posFloats[i] = posFloats[i+1];
+      i++;
+      posFloats[i] = temp;
+    }
+    for(var i = 0; i < normalFloats.length;i++) {
+      i++;
+      var temp = normalFloats[i];
+      normalFloats[i] = normalFloats[i+1];
+      i++;
+      normalFloats[i] = temp;
+    }
+  }
+  
+  //maps position indices to correct normal indices
+  var posNormalMap = [];
+  
+  var tIndices = [];
+  //convert from QUADS to TRIANGLES format
+  for(var i = 0; i < indices.length;)
+  {
+    var type = indices[i++];
+    
+    var isQuad = type & 1;
+    var vPerFace = (isQuad) ? 4 : 3;
+    
+    var posI = []
+    for(var j = 0; j < vPerFace; j++){
+      posI.push(indices[i++]);
+    }
+    
+    if (isQuad) {
+      tIndices.push(posI[0]);
+      tIndices.push(posI[1]);
+      tIndices.push(posI[3]);
+      
+      tIndices.push(posI[3]);
+      tIndices.push(posI[1]);
+      tIndices.push(posI[2]);
+    } else {
+      for(var j = 0; j < vPerFace; j++){
+        tIndices.push(i);
+      }
+    }
+    
+    if(type & 2) {
+      i++;//skip face material id
+    }
+    
+    if(type & 4) {
+      i++;//skip face uv
+    }
+    
+    if(type & 8) {
+      //skip face vertex uvs
+      for(var j = 0; j < vPerFace; j++){
+        i++;
+      }
+    }
+    
+    if(type & 16) {
+      i++;//skip face normal
+    }
+    
+    if(type & 32)
+    {
+      //skip normal indices
+      for(var j = 0; j < vPerFace; j++){
+        
+        var dstI = posI[j] * 3;
+        var srcI = indices[i++] * 3;
+        
+        for(var k = 0; k < 3; k++) {
+          normalFloats2[dstI++] = normalFloats[srcI++];
+        }
+      }
+    }
+    
+    if(type & 64) {
+      i++;//skip face color
+    }
+    
+    if(type & 128) {
+      //skip face vertex color
+      for(var j = 0; j < vPerFace; j++){
+        i++;
+      }
+    }
+  }
+  indices = tIndices;
+  
+  modelOut.indices = indices;
+  modelOut.posFloats = posFloats;
+  modelOut.normalFloats = normalFloats2;
+  modelOut.indexCount = indices.length;
 }
 
 function addFaceNormals(model) {
@@ -273,7 +276,7 @@ function addFaceNormals(model) {
 * 	ib : WebGLBuffer, 		//index buffer containing triangle indices
 * }
 */
-function createModelBufferArrays(model, success) {
+function createModelBufferArrays(model) {
 	
 	var interleavedBuffer = [];
 	if(model.drawArray) {
@@ -308,16 +311,20 @@ function createModelBufferArrays(model, success) {
 		//we dont handle this case
 		return;
 		
-		model.ib = gl.createBuffer();
+    if(!model.ib) {
+      model.ib = gl.createBuffer();
+    }
+		
 		gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, model.ib);
 		gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(model.indices), gl.STATIC_DRAW);
 	}
 	
-	model.vb = gl.createBuffer();
+  if(!model.vb) {
+    model.vb = gl.createBuffer();
+  }
 	gl.bindBuffer(gl.ARRAY_BUFFER, model.vb);
 	gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(interleavedBuffer), gl.STATIC_DRAW);
 	
-	success(model);
 }
 
 function bindModel(model) {
@@ -356,21 +363,22 @@ vec3.set(tpColorHot, 255.0 / 255.0, 251.0 / 255.0, 140.0 / 255.0);
 var minusLightDir = vec3.create();
 vec3.set(minusLightDir, 0.0, 1.0, 0.0);
 
+var model = {};
+
 function render(context) {
 	
 	resizeCanvas();
 	
-	
 	gl.viewport(0, 0, canvas.width, canvas.height);
 	
-	gl.useProgram(context.program);
+	gl.useProgram(mainProgram);
 	
-	var projMatLocation = gl.getUniformLocation(context.program, "proj");
-	//var viewMatLocation = gl.getUniformLocation(context.program, "view");
-	var modelMatLocation = gl.getUniformLocation(context.program, "model");
-	var timeFloatLocation = gl.getUniformLocation(context.program, "time");
-	var colorVecLocation = gl.getUniformLocation(context.program, "color");
-	var minusLightDirVecLocation = gl.getUniformLocation(context.program, "minusLightDir");
+	var projMatLocation = gl.getUniformLocation(mainProgram, "proj");
+	//var viewMatLocation = gl.getUniformLocation(mainProgram, "view");
+	var modelMatLocation = gl.getUniformLocation(mainProgram, "model");
+	var timeFloatLocation = gl.getUniformLocation(mainProgram, "time");
+	var colorVecLocation = gl.getUniformLocation(mainProgram, "color");
+	var minusLightDirVecLocation = gl.getUniformLocation(mainProgram, "minusLightDir");
 	
 	var projMat = mat4.create();// = new Perspective(Math.PI * 0.35, canvas.width / canvas.height, 0.1, 1000.0);
 	mat4.perspective(projMat, Math.PI * 0.35, canvas.width / canvas.height, 0.1, 1000.0);
@@ -406,14 +414,16 @@ function render(context) {
 	
 	gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 	
-	bindModel(context.model);
-	drawModel(context.model);
+	bindModel(model);
+	drawModel(model);
 	
 	//angle += 0.005;
 	time += 0.016;
 	if(time > 4.0){
 		time = 0.0;
 	}
+  
+  stats.update();
 	
 	//callback for next frame
 	window.setTimeout(function (){
@@ -421,33 +431,36 @@ function render(context) {
 	}, 1000 / 60);
 }
 
-function init() {
-    gl.clearColor(0.0, 0.0, 0.0, 1.0);
-    gl.enable(gl.DEPTH_TEST);
-	gl.disable(gl.CULL_FACE);
-	
-	loadModel(gl, "models/utah-teapot.json", function success(model) {
-		
-		addFaceNormals(model);
-		createModelBufferArrays(model, function success(model) {
-			
-			createProgram(gl, "shaders/test.vs", "shaders/test.fs", function success(program){
-				
-				//set locations of vertex attributes
-				gl.bindAttribLocation(program, ATTRIB_POS_LOCATION, "position");
-				gl.bindAttribLocation(program, ATTRIB_NORMAL_LOCATION, "normal");
-				gl.bindAttribLocation(program, ATTRIB_TRAJECTORY_LOCATION, "trajectory");
-				
-				var context = {
-					program: program,
-					model: model
-				};
-				
-				render(context);
-			});
-			
-		});
-	});
+var threeJSModel;
+
+function resetScene() {
+  importModel(threeJSModel, model);
+  //tesselateModel(model, controller.tesselation);
+  addFaceNormals(model);
+  createModelBufferArrays(model);
 }
 
-init();
+function init() {
+  gl.clearColor(0.0, 0.0, 0.0, 1.0);
+  gl.enable(gl.DEPTH_TEST);
+	gl.disable(gl.CULL_FACE);
+}
+
+loadText("models/utah-teapot.json", function(data) {
+  threeJSModel = JSON.parse(data);
+  createProgram(gl, "shaders/test.vs", "shaders/test.fs", function success(program){
+    mainProgram = program;
+    //set locations of vertex attributes
+    gl.bindAttribLocation(program, ATTRIB_POS_LOCATION, "position");
+    gl.bindAttribLocation(program, ATTRIB_NORMAL_LOCATION, "normal");
+    gl.bindAttribLocation(program, ATTRIB_TRAJECTORY_LOCATION, "trajectory");
+
+    gui = new dat.GUI();
+    gui.add(controller, "tesselation", 1, 5).onChange(resetScene);
+
+    init();
+    resetScene();
+    render();
+  });
+});
+
