@@ -549,7 +549,7 @@ var threeJSModel;
 
 function resetScene() {
   importModel(threeJSModel, model);
-  tesselateModel(model, controller.tesselation);
+  //tesselateModel(model, controller.tesselation);
   addFaceNormals(model);
   createModelBufferArrays(model);
   
