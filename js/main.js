@@ -443,9 +443,9 @@ function render(context) {
   var objRotInc = Math.PI * 2.0 / controller.instances;
   for(var i = 0; i < controller.instances; i++) {
     
-    //mat4.translate(tempMat, mat4.create(), modelPos);
-    //mat4.rotate(tempMat, tempMat, Math.PI / 4.0, right);
-    mat4.rotate(tempMat, mat4.create(), objRot, up);
+    mat4.translate(tempMat, mat4.create(), modelPos);
+    mat4.rotate(tempMat, tempMat, Math.PI / 4.0, right);
+    mat4.rotate(tempMat, tempMat, objRot, up);
     mat4.translate(modelMat, tempMat, modelPos);
     
     gl.uniformMatrix4fv(projMatLocation, false, projMat);
