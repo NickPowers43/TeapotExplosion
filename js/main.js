@@ -8,7 +8,7 @@ var stats = new Stats();
 document.body.appendChild(stats.domElement);
 
 var controller = {
-  tesselation: 0,
+  tessellation: 0,
   instances: 3,
 }
 
@@ -102,7 +102,7 @@ function createProgram(gl, vSourcePath, fSourcePath, success) {
 *	  indexCount: indices.length
 * }
 */
-function importModel(threeJSModelObject, modelOut) {
+function importModel(threeJSModelObject) {
 
   var model = threeJSModelObject;
   
@@ -199,9 +199,6 @@ function importModel(threeJSModelObject, modelOut) {
     }
   }
   
-  console.log("position count: " + (posFloats.length / 3));
-  console.log("normal count: " + posNormalMap.length);
-  
   var normalFloats2 = [];
   for(var i = 0; i < posNormalMap.length;i++) {
     var fIndex = posNormalMap[i] * 3;
@@ -214,158 +211,45 @@ function importModel(threeJSModelObject, modelOut) {
   
   indices = tIndices;
   
-  modelOut.indices = indices;
-  modelOut.posFloats = posFloats;
-  modelOut.normalFloats = normalFloats;
-  modelOut.indexCount = indices.length;
+  return {
+    indices : indices,
+    posFloats : posFloats,
+    normalFloats : normalFloats,
+    indexCount : indices.length,
+  }
 }
 
+var randomMag = 0.1;
+var halfVector = vec3.create();
+vec3.set(halfVector, 0.5, 0.5, 0.5);
 /*
 * Calculate normals for each triangle face and store them in "model.faceNormals"
 */
-function addFaceNormals(model) {
-	
-	var randomMag = 0.1;
-	var halfVector = vec3.create();
-	vec3.set(halfVector, 0.5, 0.5, 0.5);
-	
-	//calculate face normals for each group of three indices
-	var faceNormals = [];
-	for(var i = 0; i < model.indices.length;) {
-		
-		//array of points that make up this triangle. 0 = A, 1 = B, 2 = C
-		var pos = [];
-		for(var j = 0; j < 3;j++) {
-			var vertexID = model.indices[i++];
-			
-			faceNormals[vertexID] = faceNormal;
-			
-			pos.push(vec3.create());
-			var floatI = vertexID * 3;
-			for(var k = 0; k < 3; k++) {
-				pos[j][k] = model.posFloats[floatI++];
-			}
-		}
-		
-		var faceNormal = vec3.create();
-		faceNormals.push(faceNormal);
-		
-		
-		//vectors that represent two edges of the triangle
-		var vAB = vec3.create();
-		var vAC = vec3.create();
-		vec3.subtract(vAB, pos[1], pos[0]);
-		vec3.normalize(vAB, vAB);
-		vec3.subtract(vAC, pos[2], pos[0]);
-		vec3.normalize(vAC, vAC);
-		
-		vec3.cross(faceNormal, vAB, vAC);
-		vec3.normalize(faceNormal, faceNormal);
-		
-		//since the face normals are being used to calculate the triangles trajectory during the explosion
-		//we can add some randomness to this normal vector to get a less uniform explosion effect.
-		var ranV = vec3.create();
-		vec3.set(ranV, Math.random(), Math.random(), Math.random());
-		vec3.subtract(ranV, ranV, halfVector);
-		vec3.scale(ranV, ranV, 2.0 * randomMag);
-		
-		vec3.add(faceNormal, faceNormal, ranV);
-		//vec3.normalize(faceNormal, faceNormal);
-	}
-	
-	model.faceNormals = faceNormals;
-	model.drawArray = true;
-}
-
-/*
-* Tesselates the triangles of the model's mesh using controller.tesselation
-*/
-function tesselateModel(model) {
+function calculateFaceNormal(a, b, c) {
+  var faceNormal = vec3.create();
   
-  var posFloatsOut = model.posFloats;
-  var normalFloatsOut = model.normalFloats;
-  var indicesOut = [];
+  //vectors that represent two edges of the triangle
+  var vAB = vec3.create();
+  var vAC = vec3.create();
+  vec3.subtract(vAB, b, a);
+  vec3.normalize(vAB, vAB);
+  vec3.subtract(vAC, c, a);
+  vec3.normalize(vAC, vAC);
   
-  function appendVertex(pos, normal) {
-    posFloatsOut.push(pos[0], pos[1], pos[2]);
-    normalFloatsOut.push(normal[0], normal[1], normal[2]);
-  }
+  //take the cross product of the edge vectors and normalize the result
+  vec3.cross(faceNormal, vAC, vAB);
+  vec3.normalize(faceNormal, faceNormal);
   
-  function getVec3(fArray, index) {
-    var offset = index * 3;
-    var output = vec3.create();
-    vec3.set(output, fArray[offset], fArray[offset+1], fArray[offset+2]);
-    return output;
-  }
+  //since the face normals are being used to calculate the triangles trajectory during the explosion
+  //we can add some randomness to this normal vector to get a less uniform explosion effect.
+  var ranV = vec3.create();
+  vec3.set(ranV, Math.random(), Math.random(), Math.random());
+  vec3.subtract(ranV, ranV, halfVector);
+  vec3.scale(ranV, ranV, 2.0 * randomMag);
   
-  function subdivideTriangle(indices, amount) {
-    //amount > 0
-    
-    var positions = [];
-    var normals = [];
-    for(var i = 0; i < 3;i++) {
-      positions.push(getVec3(posFloatsOut, indices[i]));
-      normals.push(getVec3(normalFloatsOut, indices[i]));
-    }
-    
-    var interpolatedPositions = [];
-    var interpolatedNormals = [];
-    for(var i = 0; i < 3;i++) {
-      interpolatedPositions.push(vec3.create());
-      interpolatedNormals.push(vec3.create());
-      
-      //interpolate positions
-      vec3.subtract(interpolatedPositions[i], positions[(i+1)%3], positions[i]);
-      vec3.scale(interpolatedPositions[i], interpolatedPositions[i], 0.5);
-      vec3.add(interpolatedPositions[i], interpolatedPositions[i], positions[i]);
-      //average and normalize normals
-      vec3.add(interpolatedNormals[i], normals[i], normals[(i+1)%3]);
-      vec3.scale(interpolatedNormals[i], interpolatedPositions[i], 0.5);
-      vec3.normalize(interpolatedNormals[i], interpolatedNormals[i]);
-    }
-    //amount to offset the vertex references
-    var offset = posFloatsOut.length / 3;
-    
-    //push our newly created vertices
-    for(var i = 0; i < 3; i++) {
-      appendVertex(interpolatedPositions[i], interpolatedNormals[i]);
-    }
-    
-    function subTriangle(a, b, c, amount) {
-      
-      if(amount < 1){
-        indicesOut.push(a, b, c);
-      } else {
-        subdivideTriangle([a, b, c], amount-1);
-      }
-    }
-    
-    //reference our newly created vertices
-    subTriangle(indices[0], offset, offset+2, amount-1);
-    subTriangle(offset, indices[1],offset+1, amount-1);
-    subTriangle(offset+2, offset+1, indices[2], amount-1);
-    subTriangle(offset, offset+1, offset+2, amount-1);
-  }
+  vec3.add(faceNormal, faceNormal, ranV);
   
-  controller.tesselation = controller.tesselation|0;//make sure it is an integer
-  if(controller.tesselation > 0) {
-    for(var i = 0; i < model.indices.length;) {
-      
-      var indices = [];
-      indices.push(model.indices[i++]);
-      indices.push(model.indices[i++]);
-      indices.push(model.indices[i++]);
-      
-      subdivideTriangle(indices, controller.tesselation);
-    }
-  } else {
-    //do nothing
-    indicesOut = model.indices;
-  }
-  
-  model.indices = indicesOut;
-  model.normalFloats = normalFloatsOut;
-  model.posFloats = posFloatsOut;
+  return faceNormal;
 }
 
 /*
@@ -379,44 +263,86 @@ function tesselateModel(model) {
 function createModelBufferArrays(model) {
 	
 	var interleavedBuffer = [];
-	if(model.drawArray) {
-		//convert seperate buffers into interleaved buffer
-		for(var triangleI = 0; triangleI < model.faceNormals.length; triangleI++) {
-			for(var j = 0; j < 3; j++) {
-				
-				var vertexID = model.indices[(triangleI * 3) + j];
-				
-				var floatI = vertexID * 3;
-				
-				//append position
-				interleavedBuffer.push(model.posFloats[floatI]);
-				interleavedBuffer.push(model.posFloats[floatI+1]);
-				interleavedBuffer.push(model.posFloats[floatI+2]);
-				//append normal
-				interleavedBuffer.push(model.normalFloats[floatI]);
-				interleavedBuffer.push(model.normalFloats[floatI+1]);
-				interleavedBuffer.push(model.normalFloats[floatI+2]);
-				//append face normal
-				interleavedBuffer.push(model.faceNormals[triangleI][0]);
-				interleavedBuffer.push(model.faceNormals[triangleI][1]);
-				interleavedBuffer.push(model.faceNormals[triangleI][2]);
-				
-			}
-		}
-		
-		model.vertexCount = model.faceNormals.length * 3;
-		
-	} else {
-		//we dont handle this case
-		return;
-		
-    if(!model.ib) {
-      model.ib = gl.createBuffer();
+  
+  //Append a vertex with the following attributes to the interleavedBuffer array
+  function appendVertex(position, normal, trajectory) {
+    //append position
+    interleavedBuffer.push(position[0]);
+    interleavedBuffer.push(position[1]);
+    interleavedBuffer.push(position[2]);
+    //append normal
+    interleavedBuffer.push(normal[0]);
+    interleavedBuffer.push(normal[1]);
+    interleavedBuffer.push(normal[2]);
+    //append face normal
+    interleavedBuffer.push(trajectory[0]);
+    interleavedBuffer.push(trajectory[1]);
+    interleavedBuffer.push(trajectory[2]);
+  }
+  
+  //gets a vector3 at index "index"
+  function getVec3(fArray, index) {
+    var offset = index * 3;
+    var output = vec3.create();
+    vec3.set(output, fArray[offset], fArray[offset+1], fArray[offset+2]);
+    return output;
+  }
+  
+  /*
+  * Recursive function that either subdivides itself and calls itself on
+  * the resulting triangles or appends a triangle to the vertex array.
+  */
+  function processTriangle(a, b, c, tessellate) {
+    if(tessellate < 1){
+      faceNormal = calculateFaceNormal(a.position, b.position, c.position);
+      appendVertex(a.position, a.normal, faceNormal);
+      appendVertex(b.position, b.normal, faceNormal);
+      appendVertex(c.position, c.normal, faceNormal);
+    } else {
+      var vertices = [a, b, c];
+      var interpolatedVertices = [];
+      for(var i = 0; i < 3;i++) {
+        var iPosition = vec3.create();
+        var iNormal = vec3.create();
+        
+        //interpolate positions
+        vec3.subtract(iPosition, vertices[(i+1)%3].position, vertices[i].position);
+        vec3.scale(iPosition, iPosition, 0.5);
+        vec3.add(iPosition, iPosition, vertices[i].position);
+        //average and normalize normals
+        vec3.add(iNormal, vertices[i].normal, vertices[(i+1)%3].normal);
+        vec3.scale(iNormal, iNormal, 0.5);
+        vec3.normalize(iNormal, iNormal);
+        
+        interpolatedVertices.push({
+          position: iPosition,
+          normal: iNormal,
+        });
+      }
+      
+      //reference our newly created vertices
+      processTriangle(vertices[0], interpolatedVertices[0], interpolatedVertices[2], tessellate-1);
+      processTriangle(interpolatedVertices[0], vertices[1],interpolatedVertices[1], tessellate-1);
+      processTriangle(interpolatedVertices[2], interpolatedVertices[1], vertices[2], tessellate-1);
+      processTriangle(interpolatedVertices[0], interpolatedVertices[1], interpolatedVertices[2], tessellate-1);
     }
-		
-		gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, model.ib);
-		gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(model.indices), gl.STATIC_DRAW);
-	}
+  }
+  
+  //run processTriangle on each triangle within model
+  for(var indexI = 0; indexI < model.indices.length;) {
+    var tVertices = [];
+    for(var i = 0; i < 3;i++) {
+      tVertices.push({
+        position: getVec3(model.posFloats, model.indices[indexI]),
+        normal: getVec3(model.normalFloats, model.indices[indexI]),
+      });
+      indexI++;
+    }
+    processTriangle(tVertices[0], tVertices[1], tVertices[2], controller.tessellation);
+  }
+  
+  model.vertexCount = interleavedBuffer.length / 9;
+  model.polygons = model.vertexCount / 3;
 	
   if(!model.vb) {
     model.vb = gl.createBuffer();
@@ -424,6 +350,7 @@ function createModelBufferArrays(model) {
 	gl.bindBuffer(gl.ARRAY_BUFFER, model.vb);
 	gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(interleavedBuffer), gl.STATIC_DRAW);
 	
+	model.drawArray = true;
 }
 
 function bindModel(model) {
@@ -509,10 +436,12 @@ function render(context) {
 	var modelMat = mat4.create();
 	var tempMat = mat4.create();
 	
+  controller.instances |= 0;
+  
   //render array of teapots arranged in a circle
   var objRot = 0.0;
-  var objRotInc = Math.PI * 2.0 / (controller.instances|0);
-  for(var i = 0; i < (controller.instances|0); i++) {
+  var objRotInc = Math.PI * 2.0 / controller.instances;
+  for(var i = 0; i < controller.instances; i++) {
     
     //mat4.translate(tempMat, mat4.create(), modelPos);
     //mat4.rotate(tempMat, tempMat, Math.PI / 4.0, right);
@@ -553,10 +482,17 @@ function render(context) {
 var threeJSModel;
 
 function resetScene() {
-  importModel(threeJSModel, model);
-  tesselateModel(model, controller.tesselation);
-  addFaceNormals(model);
+  if(model) {
+    if(model.ib) {
+      gl.deleteBuffer(model.ib);
+    }
+    if(model.vb) {
+      gl.deleteBuffer(model.vb);
+    }
+  }
+  model = importModel(threeJSModel);
   createModelBufferArrays(model);
+  $("#polyCountLabel").html("Polycount: " + model.polygons);
 }
 
 function init() {
@@ -575,8 +511,8 @@ loadText("models/utah-teapot.json", function(data) {
     gl.bindAttribLocation(program, ATTRIB_TRAJECTORY_LOCATION, "trajectory");
 
     gui = new dat.GUI();
-    gui.add(controller, "tesselation", 0, 4).onChange(resetScene);
-    gui.add(controller, "instances", 1, 100).onChange(resetScene);
+    gui.add(controller, "tessellation", 0, 4).onChange(resetScene);
+    gui.add(controller, "instances", 1, 100);
     gui.add(controller, "explode");
 
     init();
