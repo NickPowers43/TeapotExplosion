@@ -8,7 +8,7 @@ var stats = new Stats();
 document.body.appendChild(stats.domElement);
 
 var controller = {
-  tesselation: 1,
+  tesselation: 0,
   instances: 3,
 }
 
@@ -112,7 +112,6 @@ function importModel(threeJSModelObject, modelOut) {
   var posFloats = threeJSGeometry.data.vertices;
   var normalFloats = threeJSGeometry.data.normals;
   var indices = threeJSGeometry.data.faces;
-  var normalFloats2 = [];
   
   //swap z and y values
   if(true) {
@@ -123,13 +122,6 @@ function importModel(threeJSModelObject, modelOut) {
       i++;
       posFloats[i] = temp;
     }
-    for(var i = 0; i < normalFloats.length;i++) {
-      i++;
-      var temp = normalFloats[i];
-      normalFloats[i] = normalFloats[i+1];
-      i++;
-      normalFloats[i] = temp;
-    }
   }
   
   //maps position indices to correct normal indices
@@ -137,8 +129,7 @@ function importModel(threeJSModelObject, modelOut) {
   
   var tIndices = [];
   //convert from QUADS to TRIANGLES format
-  for(var i = 0; i < indices.length;)
-  {
+  for(var i = 0; i < indices.length;) {
     var type = indices[i++];
     
     var isQuad = type & 1;
@@ -187,11 +178,11 @@ function importModel(threeJSModelObject, modelOut) {
       //skip normal indices
       for(var j = 0; j < vPerFace; j++){
         
-        var dstI = posI[j] * 3;
-        var srcI = indices[i++] * 3;
-        
-        for(var k = 0; k < 3; k++) {
-          normalFloats2[dstI++] = normalFloats[srcI++];
+        var normalI = indices[i++];
+        if(typeof posNormalMap[posI[j]] === 'undefined') {
+          posNormalMap[posI[j]] = normalI;
+        } else if (posNormalMap[posI[j]] != normalI) {
+          console.log("mismatch");
         }
       }
     }
@@ -207,11 +198,25 @@ function importModel(threeJSModelObject, modelOut) {
       }
     }
   }
+  
+  console.log("position count: " + (posFloats.length / 3));
+  console.log("normal count: " + posNormalMap.length);
+  
+  var normalFloats2 = [];
+  for(var i = 0; i < posNormalMap.length;i++) {
+    var fIndex = posNormalMap[i] * 3;
+    //swap y and z values
+    normalFloats2.push(normalFloats[fIndex]);
+    normalFloats2.push(normalFloats[fIndex+2]);
+    normalFloats2.push(normalFloats[fIndex+1]);
+  }
+  normalFloats = normalFloats2;
+  
   indices = tIndices;
   
   modelOut.indices = indices;
   modelOut.posFloats = posFloats;
-  modelOut.normalFloats = normalFloats2;
+  modelOut.normalFloats = normalFloats;
   modelOut.indexCount = indices.length;
 }
 
@@ -278,10 +283,8 @@ function addFaceNormals(model) {
 function tesselateModel(model) {
   
   var posFloatsOut = model.posFloats;
-  //posFloatsOut.concat(model.posFloats);
-  var indicesOut = [];
   var normalFloatsOut = model.normalFloats;
-  //normalFloatsOut.concat(model.normalFloats);
+  var indicesOut = [];
   
   function appendVertex(pos, normal) {
     posFloatsOut.push(pos[0], pos[1], pos[2]);
@@ -295,8 +298,8 @@ function tesselateModel(model) {
     return output;
   }
   
-  //amount > 0
   function subdivideTriangle(indices, amount) {
+    //amount > 0
     
     var positions = [];
     var normals = [];
@@ -308,18 +311,21 @@ function tesselateModel(model) {
     var interpolatedPositions = [];
     var interpolatedNormals = [];
     for(var i = 0; i < 3;i++) {
-      //interpolate positions
       interpolatedPositions.push(vec3.create());
-      vec3.subtract(interpolatedPositions[i], positions[i], positions[(i+1)%3]);
+      interpolatedNormals.push(vec3.create());
+      
+      //interpolate positions
+      vec3.subtract(interpolatedPositions[i], positions[(i+1)%3], positions[i]);
       vec3.scale(interpolatedPositions[i], interpolatedPositions[i], 0.5);
       vec3.add(interpolatedPositions[i], interpolatedPositions[i], positions[i]);
       //average and normalize normals
-      interpolatedNormals.push(vec3.create());
       vec3.add(interpolatedNormals[i], normals[i], normals[(i+1)%3]);
       vec3.scale(interpolatedNormals[i], interpolatedPositions[i], 0.5);
       vec3.normalize(interpolatedNormals[i], interpolatedNormals[i]);
     }
+    //amount to offset the vertex references
     var offset = posFloatsOut.length / 3;
+    
     //push our newly created vertices
     for(var i = 0; i < 3; i++) {
       appendVertex(interpolatedPositions[i], interpolatedNormals[i]);
@@ -380,17 +386,16 @@ function createModelBufferArrays(model) {
 				
 				var vertexID = model.indices[(triangleI * 3) + j];
 				
-				var posFloatI = vertexID * 3;
-				var normalFloatI = vertexID * 3;//posNormalMap[vertexID] * 3;
+				var floatI = vertexID * 3;
 				
 				//append position
-				interleavedBuffer.push(model.posFloats[posFloatI++]);
-				interleavedBuffer.push(model.posFloats[posFloatI++]);
-				interleavedBuffer.push(model.posFloats[posFloatI++]);
-				//append per vertex normal
-				interleavedBuffer.push(model.normalFloats[normalFloatI++]);
-				interleavedBuffer.push(model.normalFloats[normalFloatI++]);
-				interleavedBuffer.push(model.normalFloats[normalFloatI++]);
+				interleavedBuffer.push(model.posFloats[floatI]);
+				interleavedBuffer.push(model.posFloats[floatI+1]);
+				interleavedBuffer.push(model.posFloats[floatI+2]);
+				//append normal
+				interleavedBuffer.push(model.normalFloats[floatI]);
+				interleavedBuffer.push(model.normalFloats[floatI+1]);
+				interleavedBuffer.push(model.normalFloats[floatI+2]);
 				//append face normal
 				interleavedBuffer.push(model.faceNormals[triangleI][0]);
 				interleavedBuffer.push(model.faceNormals[triangleI][1]);
@@ -509,9 +514,9 @@ function render(context) {
   var objRotInc = Math.PI * 2.0 / (controller.instances|0);
   for(var i = 0; i < (controller.instances|0); i++) {
     
-    mat4.translate(tempMat, mat4.create(), modelPos);
-    mat4.rotate(tempMat, tempMat, Math.PI / 4.0, right);
-    mat4.rotate(tempMat, tempMat, objRot, up);
+    //mat4.translate(tempMat, mat4.create(), modelPos);
+    //mat4.rotate(tempMat, tempMat, Math.PI / 4.0, right);
+    mat4.rotate(tempMat, mat4.create(), objRot, up);
     mat4.translate(modelMat, tempMat, modelPos);
     
     gl.uniformMatrix4fv(projMatLocation, false, projMat);
@@ -549,11 +554,9 @@ var threeJSModel;
 
 function resetScene() {
   importModel(threeJSModel, model);
-  //tesselateModel(model, controller.tesselation);
+  tesselateModel(model, controller.tesselation);
   addFaceNormals(model);
   createModelBufferArrays(model);
-  
-  
 }
 
 function init() {
@@ -572,7 +575,7 @@ loadText("models/utah-teapot.json", function(data) {
     gl.bindAttribLocation(program, ATTRIB_TRAJECTORY_LOCATION, "trajectory");
 
     gui = new dat.GUI();
-    gui.add(controller, "tesselation", 1, 4).onChange(resetScene);
+    gui.add(controller, "tesselation", 0, 4).onChange(resetScene);
     gui.add(controller, "instances", 1, 100).onChange(resetScene);
     gui.add(controller, "explode");
 
